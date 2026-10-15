@@ -1,0 +1,52 @@
+name: Update scam alerts
+
+on:
+  schedule:
+    # 23:00 UTC = 07:00 Asia/Taipei (UTC+8, no daylight saving).
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: read
+
+# A push made with the built-in token does not start the other workflow,
+# so this job publishes the site itself after refreshing the list.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Fetch latest alerts
+        run: python3 scripts/update_news.py
+      - name: Commit and push if the list changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/index.html site/data/news.json
+          if git diff --cached --quiet; then
+            echo "No content change."
+            exit 0
+          fi
+          git commit -m "Update latest scam alerts from public sources"
+          git push origin HEAD
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
